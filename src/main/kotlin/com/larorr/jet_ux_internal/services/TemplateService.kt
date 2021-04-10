@@ -17,6 +17,12 @@ import org.springframework.stereotype.Service
 @Service
 class TemplateService(val templateRepository: TemplateRepository) {
     private val log = KotlinLogging.logger {}
+    // TODO move to bean?
+    private val httpClient = HttpClient(CIO) {
+        install(JsonFeature) {
+            serializer = JacksonSerializer()
+        }
+    }
 
     fun saveTemplate(template: TemplateEntity): TemplateEntity {
         if (templateRepository.existsById(template.templateId)) {
@@ -27,7 +33,7 @@ class TemplateService(val templateRepository: TemplateRepository) {
 
     fun sendMessage(templateId: String, variables: Map<String, String>?) {
         val template = templateRepository.findById(templateId).orElseThrow {
-            ResourceNotFoundException("No template with templateId $templateId")
+            ResourceNotFoundException("No template found with templateId = $templateId")
         }
         var message = template.template;
         if (variables != null) {
@@ -44,19 +50,13 @@ class TemplateService(val templateRepository: TemplateRepository) {
     }
 
     private fun sendMessageToRecipient(url: String, message: String): String {
-        val client = HttpClient(CIO) {
-            install(JsonFeature) {
-                serializer = JacksonSerializer()
+        val response: String = runBlocking {
+            httpClient.request(url) {
+                method = HttpMethod.Post
+                contentType(ContentType.Application.Json)
+                body = mapOf("message" to message)
             }
         }
-
-        val response: String = runBlocking {
-                client.request(url) {
-                    method = HttpMethod.Post
-                    contentType(ContentType.Application.Json)
-                    body = mapOf("message" to message)
-                }
-            }
 
         log.info("Got response from $url : $response")
         return response
